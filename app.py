@@ -7,6 +7,7 @@ app = Flask(__name__)
 
 TEMP_DIR = "/tmp"
 
+
 @app.route("/")
 def home():
     return "yt-dlp API is running", 200
@@ -23,17 +24,22 @@ def download():
     filepath = os.path.join(TEMP_DIR, filename)
 
     try:
-        # yt-dlp command (TikTok no watermark)
+        # Universal yt-dlp command (works for YouTube, TikTok, etc.)
         cmd = [
             "yt-dlp",
-            "-f", "mp4",
-            "-o", filepath,
-            "--no-playlist",
+            "-f", "bv*+ba/b",              # best video + best audio, fallback safe
             "--merge-output-format", "mp4",
+            "--no-playlist",
+            "-o", filepath,
             url
         ]
 
-        subprocess.run(cmd, check=True)
+        subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
 
         response = send_file(
             filepath,
@@ -42,19 +48,28 @@ def download():
             download_name="video.mp4"
         )
 
-        # delete file AFTER response is sent
+        # Cleanup after response is fully sent
         @response.call_on_close
         def cleanup():
             try:
-                os.remove(filepath)
+                if os.path.exists(filepath):
+                    os.remove(filepath)
             except:
                 pass
 
         return response
 
     except subprocess.CalledProcessError:
+        # yt-dlp failed (unsupported, blocked, too long, etc.)
         return jsonify({"error": "Download failed"}), 500
+
+    except Exception:
+        # any unexpected error
+        return jsonify({"error": "Internal server error"}), 500
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000))
+    )
